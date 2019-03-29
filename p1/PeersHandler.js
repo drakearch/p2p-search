@@ -11,11 +11,9 @@ let peerTable = {},
 
 module.exports = {
     handleClientJoining: function (sock, maxPeers, sender, peerTable) {
-        console.log('Handle Client Joining!');
         sock.on('data', (message) => {
             let addr = bytes2string(message).split(':');
             let peer = {'port': addr[1], 'IP': addr[0]};
-            console.log(peer);
             let peersCount = Object.keys(peerTable).length;
             if (peersCount === maxPeers) {
                 declineClient(sock, sender, peerTable);
@@ -31,7 +29,6 @@ module.exports = {
         let pendingPeer = {'port': knownPeer.port, 'IP': knownPeer.IP, 'pending': true};
         let peerAddress = pendingPeer.IP + ':' + pendingPeer.port;
         peerTable[peerAddress] = pendingPeer;
-        console.log(peerTable);
         // connect to the known peer address
         let clientPeer = new net.Socket();
         clientPeer.connect(knownPeer.port, knownPeer.IP, function () {
@@ -139,7 +136,6 @@ function handleCommunication (client, maxPeers, location, peerTable) {
             let receiverPeer = {'port': client.remotePort, 'IP': client.remoteAddress};
             let peerAddress = receiverPeer.IP + ':' + receiverPeer.port;
             peerTable[peerAddress] = receiverPeer;
-            console.log(peerTable);
 
             console.log("Received ack from " + sender + ":" + client.remotePort);
             Object.values(peerList).forEach(peer => {
@@ -148,9 +144,14 @@ function handleCommunication (client, maxPeers, location, peerTable) {
         } else {
             console.log("Received ack from " + sender + ":" + client.remotePort);
             isFull[client.remotePort] = true;
-            if (numberOfPeers > 0)
-                console.log("  which is peered with: " + peerIP + ":" + peerPort);
+            Object.values(peerList).forEach(peer => {
+                console.log("  which is peered with: " + peer.IP + ":" + peer.port);
+            });
             console.log("Join redirected, try to connect to the peer above.");
+        
+            // remove the server (the receiver request) into the table
+            let peerAddress = client.remoteAddress + ':' + client.remotePort;
+            delete peerTable[peerAddress];
         }
     });
     client.on('end', () => {

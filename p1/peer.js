@@ -54,8 +54,8 @@ if (process.argv.length > 2) {
                 console.log('Bad address!... it should be <serverIP>:<port>');
         }
         if (process.argv[flag] === '-n'){
-            if(process.argv[flag + 1] && process.argv[flag + 1] > 0)
-                maxpeers = process.argv[flag + 1];
+            if(process.argv[flag + 1] && parseInt(process.argv[flag + 1]) > 0)
+                maxpeers = parseInt(process.argv[flag + 1]);
             else
                 console.log('maxPeers should be a non-zero positive number, using default 6.');
         }
