@@ -34,6 +34,7 @@ console.log('This peer address is ' + HOST + ':' + PORT + ' located at ' + peerL
 
 // initialize peer table
 let peerTable = {};
+let unpeerTable = {};
 serverPeer.on('connection', function (sock) {
     // received connection request
     handler.handleClientJoining(sock, maxpeers, peerLocation, peerTable);
@@ -65,8 +66,7 @@ if (process.argv.length > 2) {
                 console.log('Incorrect ITP version, using default 3314.');
         }
     }
-    console.log(knownPeer);
-    console.log(localPeer);
+    
     if (knownPeer.IP)
         handler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable)
 }

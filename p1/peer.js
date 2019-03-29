@@ -34,6 +34,7 @@ console.log('This peer address is ' + HOST + ':' + PORT + ' located at ' + peerL
 
 // initialize peer table
 let peerTable = {};
+let unpeerTable = {};
 serverPeer.on('connection', function (sock) {
     // received connection request
     handler.handleClientJoining(sock, maxpeers, peerLocation, peerTable);

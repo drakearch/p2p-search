@@ -26,14 +26,18 @@ module.exports = {
     },
 
     handleConnect: function (knownPeer, localPeer, maxPeers, peerLocation, peerTable) {
+        
+        // add the server (the receiver request) into the table as pending
+        let pendingPeer = {'port': knownPeer.port, 'IP': knownPeer.IP, 'pending': true};
+        let peerAddress = pendingPeer.IP + ':' + pendingPeer.port;
+        peerTable[peerAddress] = pendingPeer;
+        console.log(peerTable);
         // connect to the known peer address
         let clientPeer = new net.Socket();
-        console.log('Handle Connect!');
         clientPeer.connect(knownPeer.port, knownPeer.IP, function () {
             handleCommunication(clientPeer, maxPeers, peerLocation, peerTable);
             clientPeer.write(localPeer.IP + ':' + localPeer.port);
         });
-        clientPeer.destroy();
     },
 
     handleCommunications: function (client, maxPeers, location, peerTable) {
@@ -133,7 +137,9 @@ function handleCommunication (client, maxPeers, location, peerTable) {
 
             // add the server (the receiver request) into the table
             let receiverPeer = {'port': client.remotePort, 'IP': client.remoteAddress};
-            peerTable[1] = receiverPeer;
+            let peerAddress = receiverPeer.IP + ':' + receiverPeer.port;
+            peerTable[peerAddress] = receiverPeer;
+            console.log(peerTable);
 
             console.log("Received ack from " + sender + ":" + client.remotePort);
             Object.values(peerList).forEach(peer => {
@@ -174,11 +180,12 @@ function declineClient(sock, sender, peerTable) {
 }
 
 function addClient(peer, peerTable) {
-    let peersCount = Object.keys(peerTable).length;
+    //let peersCount = Object.keys(peerTable).length;
     //let joiningPeer = {'port': sock.remotePort, 'IP': sock.remoteAddress};
-    peerTable[++peersCount] = peer;
+    //peerTable[++peersCount] = peer;
 
     let peerAddress = peer.IP + ':' + peer.port;
+    peerTable[peerAddress] = peer;
     console.log('\nConnected from peer ' + peerAddress);
 }
 
