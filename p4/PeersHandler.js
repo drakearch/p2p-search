@@ -23,7 +23,7 @@ module.exports = {
         });
     },
 
-    handleConnect: function (knownPeer, localPeer, maxPeers, peerLocation, peerTable) {
+    handleConnect: function (knownPeer, localPeer, maxPeers, peerLocation, peerTable, unpeerTable) {
         
         // add the server (the receiver request) into the table as pending
         let pendingPeer = {'port': knownPeer.port, 'IP': knownPeer.IP, 'pending': true};
@@ -32,7 +32,7 @@ module.exports = {
         // connect to the known peer address
         let clientPeer = new net.Socket();
         clientPeer.connect(knownPeer.port, knownPeer.IP, function () {
-            handleCommunication(clientPeer, maxPeers, peerLocation, peerTable);
+            handleCommunication(clientPeer, maxPeers, peerLocation, peerTable, unpeerTable);
             clientPeer.write(localPeer.IP + ':' + localPeer.port);
         });
     },
@@ -109,7 +109,7 @@ module.exports = {
     }
 };
 
-function handleCommunication (client, maxPeers, location, peerTable) {
+function handleCommunication (client, maxPeers, location, peerTable, unpeerTable) {
     // get message from server
 
     client.on('data', (message) => {
@@ -117,15 +117,21 @@ function handleCommunication (client, maxPeers, location, peerTable) {
         let msgType = bytes2number(message.slice(3, 4));
         let sender = bytes2string(message.slice(4, 8));
         let numberOfPeers = bytes2number(message.slice(8, 12));
+        let peerList = {};
 
-        for (var i = 0; i < numberOfPeers; ) {
+        for (var i = 0; i < numberOfPeers; i++) {
             let peerPort = bytes2number(message.slice(14 + i*8, 16 + i*8));
             let peerIP = bytes2number(message.slice(16 + i*8, 17 + i*8)) + '.'
                 + bytes2number(message.slice(17 + i*8, 18 + i*8)) + '.'
                 + bytes2number(message.slice(18 + i*8, 19 + i*8)) + '.'
                 + bytes2number(message.slice(19 + i*8, 20 + i*8));
             let joiningPeer = {'port': peerPort, 'IP': peerIP};
-            peerList[++i] = joiningPeer;
+            let peerAddress = peerIP + ':' + peerPort;
+            peerList[peerAddress] = joiningPeer;
+
+            // Update unpeerTable
+            if (!(peerAddress in unpeerTable))
+                unpeerTable[peerAddress] = joiningPeer;
         }
 
         if (msgType == 1) {
@@ -152,7 +158,9 @@ function handleCommunication (client, maxPeers, location, peerTable) {
             // remove the server (the receiver request) into the table
             let peerAddress = client.remoteAddress + ':' + client.remotePort;
             delete peerTable[peerAddress];
+            unpeerTable[peerAddress] = {'port': client.remotePort, 'IP': client.remoteAddress, 'status': 'declined'}
         }
+        console.log(unpeerTable);
     });
     client.on('end', () => {
         if (isFull[client.remotePort]) process.exit();

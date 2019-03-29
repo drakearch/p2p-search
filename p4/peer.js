@@ -35,6 +35,7 @@ console.log('This peer address is ' + HOST + ':' + PORT + ' located at ' + peerL
 // initialize peer table
 let peerTable = {};
 let unpeerTable = {};
+unpeerTable[HOST + ':' + PORT] = {'port': PORT, 'IP': HOST, 'status': 'me'};
 serverPeer.on('connection', function (sock) {
     // received connection request
     handler.handleClientJoining(sock, maxpeers, peerLocation, peerTable);
@@ -54,8 +55,8 @@ if (process.argv.length > 2) {
                 console.log('Bad address!... it should be <serverIP>:<port>');
         }
         if (process.argv[flag] === '-n'){
-            if(process.argv[flag + 1] && process.argv[flag + 1] > 0)
-                maxpeers = process.argv[flag + 1];
+            if(process.argv[flag + 1] && parseInt(process.argv[flag + 1]) > 0)
+                maxpeers = parseInt(process.argv[flag + 1]);
             else
                 console.log('maxPeers should be a non-zero positive number, using default 6.');
         }
@@ -68,7 +69,7 @@ if (process.argv.length > 2) {
     }
     
     if (knownPeer.IP)
-        handler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable)
+        handler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable, unpeerTable)
 }
 
 
