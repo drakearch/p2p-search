@@ -38,7 +38,7 @@ let unpeerTable = {};
 unpeerTable[HOST + ':' + PORT] = {'port': PORT, 'IP': HOST, 'status': 'me'};
 serverPeer.on('connection', function (sock) {
     // received connection request
-    handler.handleClientJoining(sock, maxpeers, peerLocation, peerTable);
+    handler.handleClientJoining(sock, maxpeers, peerLocation, peerTable, unpeerTable);
 });
 
 if (process.argv.length > 2) {
@@ -69,7 +69,18 @@ if (process.argv.length > 2) {
     }
     
     if (knownPeer.IP)
-        handler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable, unpeerTable)
+        handler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable, unpeerTable);
 }
 
-
+// Automatic Join
+setInterval(function() {
+    if (Object.keys(peerTable).length < maxpeers) {
+        knownPeer = {};
+        Object.values(unpeerTable).forEach(peer => {
+            if (!('status' in peer) && !knownPeer.IP)
+                knownPeer = peer;
+        });
+        if (knownPeer.IP)
+            handler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable, unpeerTable);
+    }
+}, 5000);

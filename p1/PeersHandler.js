@@ -10,15 +10,15 @@ let peerTable = {},
 
 
 module.exports = {
-    handleClientJoining: function (sock, maxPeers, sender, peerTable) {
+    handleClientJoining: function (sock, maxPeers, sender, peerTable, unpeerTable) {
         sock.on('data', (message) => {
             let addr = bytes2string(message).split(':');
             let peer = {'port': addr[1], 'IP': addr[0]};
             let peersCount = Object.keys(peerTable).length;
             if (peersCount === maxPeers) {
-                declineClient(sock, sender, peerTable);
+                declineClient(sock, sender, peerTable, unpeerTable);
             } else {
-                handleClient(sock, sender, peer, peerTable)
+                handleClient(sock, sender, peer, peerTable, unpeerTable)
             }
         });
     },
@@ -34,6 +34,10 @@ module.exports = {
         clientPeer.connect(knownPeer.port, knownPeer.IP, function () {
             handleCommunication(clientPeer, maxPeers, peerLocation, peerTable, unpeerTable);
             clientPeer.write(localPeer.IP + ':' + localPeer.port);
+        });
+        clientPeer.on('error', function () {
+            unpeerTable[peerAddress] = {'port': knownPeer.port, 'IP': knownPeer.IP, 'status': 'error'};
+            delete peerTable[peerAddress];
         });
     },
 
@@ -142,6 +146,7 @@ function handleCommunication (client, maxPeers, location, peerTable, unpeerTable
             let receiverPeer = {'port': client.remotePort, 'IP': client.remoteAddress};
             let peerAddress = receiverPeer.IP + ':' + receiverPeer.port;
             peerTable[peerAddress] = receiverPeer;
+            unpeerTable[peerAddress] = {'port': client.remotePort, 'IP': client.remoteAddress, 'status': 'peered'}
 
             console.log("Received ack from " + sender + ":" + client.remotePort);
             Object.values(peerList).forEach(peer => {
@@ -160,17 +165,16 @@ function handleCommunication (client, maxPeers, location, peerTable, unpeerTable
             delete peerTable[peerAddress];
             unpeerTable[peerAddress] = {'port': client.remotePort, 'IP': client.remoteAddress, 'status': 'declined'}
         }
-        console.log(unpeerTable);
-    });
+    }); /*
     client.on('end', () => {
         if (isFull[client.remotePort]) process.exit();
-    });
+    });*/
 
 }
 
-function handleClient(sock, sender, peer, peerTable) {
+function handleClient(sock, sender, peer, peerTable, unpeerTable) {
     // accept client request
-    addClient(peer, peerTable);
+    addClient(peer, peerTable, unpeerTable);
 
     // send acknowledgment to the client
     cPTPpacket.init(1, sender, peerTable);
@@ -178,8 +182,9 @@ function handleClient(sock, sender, peer, peerTable) {
     sock.end();
 }
 
-function declineClient(sock, sender, peerTable) {
+function declineClient(sock, sender, peerTable, unpeerTable) {
     let peerAddress = sock.remoteAddress + ':' + sock.remotePort;
+    unpeerTable[peerAddress] = {'port': sock.remotePort, 'IP': sock.remoteAddress};
     console.log('\nPeer table full: ' + peerAddress + ' redirected');
 
     // send acknowledgment to the client
@@ -188,13 +193,14 @@ function declineClient(sock, sender, peerTable) {
     sock.end();
 }
 
-function addClient(peer, peerTable) {
+function addClient(peer, peerTable, unpeerTable) {
     //let peersCount = Object.keys(peerTable).length;
     //let joiningPeer = {'port': sock.remotePort, 'IP': sock.remoteAddress};
     //peerTable[++peersCount] = peer;
 
     let peerAddress = peer.IP + ':' + peer.port;
     peerTable[peerAddress] = peer;
+    unpeerTable[peerAddress] = {'port': peer.port, 'IP': peer.IP, 'status': 'peered'};
     console.log('\nConnected from peer ' + peerAddress);
 }
 
