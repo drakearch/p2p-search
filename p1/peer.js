@@ -13,6 +13,12 @@ let IMAGE_PORT = singleton.getPort(); //get random port number
 let maxpeers = 6;
 let ITPVersion = '3314';
 
+// Console style colors
+let RESET_STYLE = "\x1b[0m";
+let BRIGHT = "\x1b[1m";
+let FG_GREEN = "\x1b[32m";
+let FG_CYAN = "\x1b[36m";
+
 // get the loaclhost ip address
 Object.keys(ifaces).forEach(function (ifname) {
     ifaces[ifname].forEach(function (iface) {
@@ -27,12 +33,13 @@ Object.keys(ifaces).forEach(function (ifname) {
 let path = __dirname.split("/");
 let peerLocation = path[path.length - 1];
 let localPeer = {'port': PEER_PORT, 'IP': HOST};
+let imageAddress = {'port': IMAGE_PORT, 'IP': HOST};
 let knownPeer = {};
 
 // run as a peer server
 let serverPeer = net.createServer();
 serverPeer.listen(PEER_PORT, HOST);
-console.log('This peer address is ' + HOST + ':' + PEER_PORT + ' located at ' + peerLocation);
+console.log('This peer address is ' + BRIGHT + FG_GREEN + HOST + ':' + PEER_PORT + RESET_STYLE + ' located at ' + peerLocation);
 
 // initialize peer table
 let peerTable = {};
@@ -88,10 +95,16 @@ setInterval(function() {
     }
 }, 5000);
 
+let counter = IMAGE_PORT;
+setInterval(function() {
+    peersHandler.handleSearch(peerTable, peerLocation, {'origin': imageAddress}, counter, 'Image-'+counter+'.jpg');
+    counter++;
+}, 5000);
+
 // Run Image server
 let peer2peerDB = net.createServer();
 peer2peerDB.listen(IMAGE_PORT, HOST);
-console.log('\nPeer2PeerDB server is started at timestamp: '+singleton.getTimestamp()+' and is listening on ' + HOST + ':' + IMAGE_PORT);
+console.log('Peer2PeerDB server is started at timestamp: '+singleton.getTimestamp()+' and is listening on ' + BRIGHT + FG_CYAN + HOST + ':' + IMAGE_PORT + RESET_STYLE);
 peer2peerDB.on('connection', function(sock) {
     imageHandler.handleClientJoining(sock);
 });

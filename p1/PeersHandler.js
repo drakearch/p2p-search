@@ -10,42 +10,68 @@ let peerTable = {},
 
 
 module.exports = {
-    handleClientJoining: function (sock, maxPeers, sender, peerTable, unpeerTable) {
-        sock.on('data', (message) => {
-            // Data is <n ip_address:port
-            var pattern = /^\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}:\d+$/;
-            if (bytes2string(message).match( pattern )) {
-                let addr = bytes2string(message).split(':');
-                let peer = {'port': addr[1], 'IP': addr[0]};
-                let peersCount = Object.keys(peerTable).length;
-                if (peersCount === maxPeers) 
-                    declineClient(sock, sender, peerTable, unpeerTable);
-                else 
-                    handleClient(sock, sender, peer, peerTable, unpeerTable)
-            } else {
-
-            }
-        });
-    },
-
-    handleConnect: function (knownPeer, localPeer, maxPeers, peerLocation, peerTable, unpeerTable) {
-        
-        // add the server (the receiver request) into the table as pending
-        let pendingPeer = {'port': knownPeer.port, 'IP': knownPeer.IP, 'pending': true};
-        let peerAddress = pendingPeer.IP + ':' + pendingPeer.port;
-        peerTable[peerAddress] = pendingPeer;
-        // connect to the known peer address
-        let clientPeer = new net.Socket();
-        clientPeer.connect(knownPeer.port, knownPeer.IP, function () {
-            handleCommunication(clientPeer, maxPeers, peerLocation, peerTable, unpeerTable);
-            clientPeer.write(localPeer.IP + ':' + localPeer.port);
-        });
-        clientPeer.on('error', function () {
-            unpeerTable[peerAddress] = {'port': knownPeer.port, 'IP': knownPeer.IP, 'status': 'error'};
-            delete peerTable[peerAddress];
-        });
-    }
+    handleClientJoining: handleClientJoining,
+    handleConnect: handleConnect,
+    handleSearch: handleSearch
 };
+
+function handleSearch (peerTable, sender, originPeerImageSocket, searchID, filename) {
+    // Send search packet to peers
+    cPTPpacket.init(3, sender, originPeerImageSocket, searchID, filename);
+    let searchPacket = cPTPpacket.getPacket();
+    Object.values(peerTable).forEach(peer => {
+        let searchSock = new net.Socket();
+        searchSock.connect(peer.port, peer.IP, function () {
+            searchSock.write(searchPacket);
+            searchSock.end();
+        });
+    });    
+}
+
+function handleClientJoining (sock, maxPeers, sender, peerTable, unpeerTable) {
+    sock.on('data', (message) => {
+        // Data is <n ip_address:port
+        var pattern = /^\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}:\d+$/;
+        if (bytes2string(message).match( pattern )) {
+            let addr = bytes2string(message).split(':');
+            let peer = {'port': addr[1], 'IP': addr[0]};
+            let peersCount = Object.keys(peerTable).length;
+            if (peersCount === maxPeers) 
+                declineClient(sock, sender, peerTable, unpeerTable);
+            else 
+                handleClient(sock, sender, peer, peerTable, unpeerTable)
+        } else { // Peer2Peer Search
+            let msgType = bytes2number(message.slice(3, 4));
+            let sender = bytes2string(message.slice(4, 8));
+            let searchID = bytes2number(message.slice(8, 12));
+            let peerPort = bytes2number(message.slice(14, 16));
+            let peerIP = bytes2number(message.slice(16, 17)) + '.'
+                + bytes2number(message.slice(17, 18)) + '.'
+                + bytes2number(message.slice(18, 19)) + '.'
+                + bytes2number(message.slice(19, 20));
+            let imageFilename = bytes2string(message.slice(20));
+            console.log(msgType, sender, searchID, peerIP+':'+peerPort, imageFilename);
+        }
+    });
+}
+
+function handleConnect (knownPeer, localPeer, maxPeers, peerLocation, peerTable, unpeerTable) {
+        
+    // add the server (the receiver request) into the table as pending
+    let pendingPeer = {'port': knownPeer.port, 'IP': knownPeer.IP, 'pending': true};
+    let peerAddress = pendingPeer.IP + ':' + pendingPeer.port;
+    peerTable[peerAddress] = pendingPeer;
+    // connect to the known peer address
+    let clientPeer = new net.Socket();
+    clientPeer.connect(knownPeer.port, knownPeer.IP, function () {
+        handleCommunication(clientPeer, maxPeers, peerLocation, peerTable, unpeerTable);
+        clientPeer.write(localPeer.IP + ':' + localPeer.port);
+    });
+    clientPeer.on('error', function () {
+        unpeerTable[peerAddress] = {'port': knownPeer.port, 'IP': knownPeer.IP, 'status': 'error'};
+        delete peerTable[peerAddress];
+    });
+}
 
 function handleCommunication (client, maxPeers, location, peerTable, unpeerTable) {
     // get message from server
