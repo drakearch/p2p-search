@@ -1,7 +1,6 @@
 let net = require('net'),
     singleton = require('./Singleton'),
-    peersHandler = require('./PeersHandler'),
-    imageHandler = require('./ClientsHandler');
+    handler = require('./PeersHandler');
 
 singleton.init();
 
@@ -45,10 +44,14 @@ console.log('This peer address is ' + BRIGHT + FG_GREEN + HOST + ':' + PEER_PORT
 let peerTable = {};
 let unpeerTable = {};
 unpeerTable[HOST + ':' + PEER_PORT] = {'port': PEER_PORT, 'IP': HOST, 'status': 'me'};
+let historySearch = [];
+let receivedImagePackets = [];
+
 serverPeer.on('connection', function (sock) {
     // received connection request
-    peersHandler.handleClientJoining(sock, maxpeers, peerLocation, peerTable, unpeerTable);
+    handler.handlePeerJoining(sock, maxpeers, peerLocation, peerTable, unpeerTable, historySearch);
 });
+
 
 if (process.argv.length > 2) {
     // call as node peer [-p <serverIP>:<port> -n <maxpeers> -v <version>]
@@ -78,7 +81,7 @@ if (process.argv.length > 2) {
     }
     
     if (knownPeer.IP) 
-        peersHandler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable, unpeerTable);
+        handler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable, unpeerTable);
 }
 
 // Automatic Join
@@ -91,13 +94,13 @@ setInterval(function() {
         });
         
         if (knownPeer.IP) 
-            peersHandler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable, unpeerTable);
+            handler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable, unpeerTable);
     }
 }, 5000);
 
 let counter = IMAGE_PORT;
 setInterval(function() {
-    peersHandler.handleSearch(peerTable, peerLocation, {'origin': imageAddress}, counter, 'Image-'+counter+'.jpg');
+    //handler.handleSearch(peerTable, historySearch, maxpeers, peerLocation, {'origin': imageAddress}, counter, peerLocation + '-' + counter + '.jpg');
     counter++;
 }, 5000);
 
@@ -106,5 +109,5 @@ let peer2peerDB = net.createServer();
 peer2peerDB.listen(IMAGE_PORT, HOST);
 console.log('Peer2PeerDB server is started at timestamp: '+singleton.getTimestamp()+' and is listening on ' + BRIGHT + FG_CYAN + HOST + ':' + IMAGE_PORT + RESET_STYLE);
 peer2peerDB.on('connection', function(sock) {
-    imageHandler.handleClientJoining(sock);
+    handler.handleImageJoining(sock, peerTable, historySearch, maxpeers, peerLocation, receivedImagePackets);
 });

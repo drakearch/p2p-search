@@ -1,38 +1,144 @@
 let net = require('net'),
     cPTPpacket = require('./cPTPmessage'),
+    ITPpacket = require('./ITPpacketResponse'),
     singleton = require('./Singleton');
+const fs = require('fs');
 
 let peerTable = {},
     peerList = {},
     firstPeerIP = {},
     firstPeerPort = {},
-    isFull = {};
+    isFull = {},
+    nickNames = {},
+    clientIP = {},
+    startTimestamp = {};
 
 
 module.exports = {
-    handleClientJoining: handleClientJoining,
+    handlePeerJoining: handlePeerJoining,
     handleConnect: handleConnect,
-    handleSearch: handleSearch
+    handleSearch: handleSearch,
+
+    handleImageJoining: handleImageJoining
 };
 
-function handleSearch (peerTable, sender, originPeerImageSocket, searchID, filename) {
+
+function handleImageJoining (sock, peerTable, searchHistory, maxPeers, sender, imagePackets) {
+    assignClientName(sock, nickNames);
+    const chunks = [];
+    console.log('\n' + nickNames[sock.id] + ' is connected at timestamp: ' + startTimestamp[sock.id]);
+    sock.on('data', function (requestPacket) {
+        handleClientRequests(requestPacket, sock, peerTable, searchHistory, maxPeers, sender, imagePackets); //read client requests and respond
+
+    });
+    sock.on('close', function () {
+        handleClientLeaving(sock);
+    });
+}
+
+function handleClientRequests(data, sock, peerTable, searchHistory, maxPeers, sender, imagePackets) {
+    let version = bytes2number(data.slice(0, 3));
+    let requestType = bytes2number(data.slice(3, 4));
+
+    if (requestType == 0) {
+        let imageFilename = bytes2string(data.slice(4));
+        console.log('\n' + nickNames[sock.id] + ' requests:'
+            + '\n    --ITP version: ' + version
+            + '\n    --Request type: ' + requestType
+            + '\n    --Image file name: \'' + imageFilename +'\'\n');
+
+        fs.readFile('images/' + imageFilename, (err, data) => {
+            if (!err) {
+                var infile = fs.createReadStream('images/' + imageFilename);
+                const imageChunks = [];
+                infile.on('data', function (chunk) {
+                    imageChunks.push(chunk);
+                });
+
+                infile.on('close', function () {
+                    let image = Buffer.concat(imageChunks);
+                    ITPpacket.init(1, singleton.getSequenceNumber(), singleton.getTimestamp(), image, image.length);
+                    sock.write(ITPpacket.getPacket());
+                    sock.end();
+                });
+            } else {
+                // Clear Received images...
+                imagePackets.length = 0;
+                console.log('readfile error');
+                let originAddress = {'origin': {'port': sock.localPort, 'IP': sock.localAddress}};
+                handleSearch (peerTable, searchHistory, maxPeers, sender, originAddress, sock.remotePort, imageFilename);
+                // find if package arrived to server
+                let timeTick = 0;
+                let timer = setInterval(function () {
+                    if (imagePackets.length > 0) {
+                        console.log('Package found....!!!!!!');
+                        sock.write(imagePackets[0]);
+                        sock.end();
+                        clearInterval(timer);
+                    } 
+                    // Timeout
+                    if (timeTick === 100) {
+                        console.log('send image not found!');
+                        sock.end();
+                        clearInterval(timer);
+                    }
+                    timeTick++;
+                }, 5);
+            }
+        });
+    }
+
+    // Another peer send image packet
+    if (requestType == 1) {
+        imagePackets.push(data);
+        console.log('Image received in', requestType);
+    }
+}
+
+function handleClientLeaving(sock) {
+    console.log(nickNames[sock.id] + ' closed the connection');
+}
+
+function assignClientName(sock, nickNames) {
+    sock.id = sock.remoteAddress + ':' + sock.remotePort;
+    startTimestamp[sock.id] = singleton.getTimestamp();
+    var name = 'Client-' + startTimestamp[sock.id];
+    nickNames[sock.id] = name;
+    clientIP[sock.id] = sock.remoteAddress;
+}
+
+
+function handleSearch (peerTable, searchHistory, maxPeers, sender, originPeerImageSocket, searchID, filename) {
+    let searchKey = searchID + ':' + filename;
+    // Update search history
+    if(searchHistory.length >= maxPeers)
+        searchHistory.shift();
+    searchHistory.push(searchKey);
     // Send search packet to peers
     cPTPpacket.init(3, sender, originPeerImageSocket, searchID, filename);
     let searchPacket = cPTPpacket.getPacket();
+    sendSearchPacket(peerTable, searchPacket); 
+}
+
+function sendSearchPacket (peerTable, searchPacket) {
     Object.values(peerTable).forEach(peer => {
         let searchSock = new net.Socket();
         searchSock.connect(peer.port, peer.IP, function () {
             searchSock.write(searchPacket);
             searchSock.end();
         });
-    });    
+        searchSock.on('error', function () {
+            console.log(peer.IP + ':' + peer.port, 'not available!');
+            searchSock.end();
+        });
+    }); 
 }
 
-function handleClientJoining (sock, maxPeers, sender, peerTable, unpeerTable) {
+function handlePeerJoining (sock, maxPeers, sender, peerTable, unpeerTable, searchHistory) {
     sock.on('data', (message) => {
         // Data is <n ip_address:port
         var pattern = /^\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}:\d+$/;
-        if (bytes2string(message).match( pattern )) {
+        if (bytes2string(message).match( pattern )) { // If new peer2peer connection
             let addr = bytes2string(message).split(':');
             let peer = {'port': addr[1], 'IP': addr[0]};
             let peersCount = Object.keys(peerTable).length;
@@ -42,16 +148,56 @@ function handleClientJoining (sock, maxPeers, sender, peerTable, unpeerTable) {
                 handleClient(sock, sender, peer, peerTable, unpeerTable)
         } else { // Peer2Peer Search
             let msgType = bytes2number(message.slice(3, 4));
-            let sender = bytes2string(message.slice(4, 8));
-            let searchID = bytes2number(message.slice(8, 12));
-            let peerPort = bytes2number(message.slice(14, 16));
-            let peerIP = bytes2number(message.slice(16, 17)) + '.'
-                + bytes2number(message.slice(17, 18)) + '.'
-                + bytes2number(message.slice(18, 19)) + '.'
-                + bytes2number(message.slice(19, 20));
-            let imageFilename = bytes2string(message.slice(20));
-            console.log(msgType, sender, searchID, peerIP+':'+peerPort, imageFilename);
+            if (msgType == 3) {
+                let sender = bytes2string(message.slice(4, 8));
+                let searchID = bytes2number(message.slice(8, 12));
+                let originPort = bytes2number(message.slice(14, 16));
+                let originIP = bytes2number(message.slice(16, 17)) + '.'
+                    + bytes2number(message.slice(17, 18)) + '.'
+                    + bytes2number(message.slice(18, 19)) + '.'
+                    + bytes2number(message.slice(19, 20));
+                let imageFilename = bytes2string(message.slice(20));
+                console.log(msgType, sender, searchID, originIP+':'+originPort, imageFilename);
+                
+                let searchKey = searchID + ':' + imageFilename;
+                console.log(searchKey);
+                // If P2Psearch not in recent search history... else discard packet
+                if (searchHistory.indexOf(searchKey) < 0) {
+                    // Update search history
+                    if(searchHistory.length >= maxPeers)
+                        searchHistory.shift();
+                    searchHistory.push(searchKey);
+
+                    fs.readFile('images/' + imageFilename, (err, data) => {
+                        if (!err) { // If image exist locally.
+                            console.log(imageFilename, 'exists! Sending image...');
+                            let originAddress = {'port': originPort, 'IP': originIP};
+                            sendImagePacket('images/' + imageFilename, originAddress);
+                        } else {
+                            console.log(imageFilename, 'nooooo exists! Searching in pairs...');
+                            sendSearchPacket(peerTable, message);
+                        }
+                    });
+                }
+            }
         }
+    });
+}
+
+function sendImagePacket (filePath, peer) {
+    let imageSock = new net.Socket();
+    imageSock.connect(peer.port, peer.IP, function () {
+        let infile = fs.createReadStream(filePath);
+        const imageChunks = [];
+        infile.on('data', function (chunk) {
+            imageChunks.push(chunk);
+        });
+        infile.on('close', function () {
+            let image = Buffer.concat(imageChunks);
+            ITPpacket.init(1, singleton.getSequenceNumber(), singleton.getTimestamp(), image, image.length);
+            imageSock.write(ITPpacket.getPacket());
+            imageSock.end();
+        });
     });
 }
 

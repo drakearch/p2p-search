@@ -17,7 +17,8 @@ module.exports = {
     init: function( fileName) {
         //fill by default packet fields:
         version = 3314;
-        requestType = 1;
+        //requestType = 1;
+        requestType = 0;
         imageFileName = fileName;
 
         //build the header bistream:

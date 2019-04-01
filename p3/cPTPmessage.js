@@ -13,8 +13,6 @@ module.exports = {
 
     init: function(msgType, sender, peerTable, searchID = 0, imageFileName = '') {
         let noOfPeers = Object.keys(peerTable).length;
-        console.log(peerTable);
-        console.log('noOfPeers:', noOfPeers);
 
         //fill by default header fields:
         version = 3314;
@@ -44,7 +42,6 @@ module.exports = {
         }
         
         noOfPeers = searchID || Object.keys(peerTable).length;
-        console.log('Search ID:', noOfPeers);
         // third 4 bytes
         let n1 = noOfPeers ;
         this.message[8] = (n1 >>> 24) ;
@@ -74,8 +71,6 @@ module.exports = {
             this.message[17 + j*8] = IP[1];
             this.message[18 + j*8] = IP[2];
             this.message[19 + j*8] = IP[3];
-
-            console.log(port, IP);
 
             j++;
         });
