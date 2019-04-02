@@ -7,10 +7,10 @@ singleton.init();
 let os = require('os');
 let ifaces = os.networkInterfaces();
 let HOST = '';
-let PEER_PORT = singleton.getPort(); //get random port number
-let IMAGE_PORT = singleton.getPort(); //get random port number
-let maxpeers = 6;
-let ITPVersion = '3314';
+let PEER_PORT = singleton.getPort(); //get random PEER port 
+let IMAGE_PORT = singleton.getPort(); //get random IMAGE port
+let maxpeers = 6; // Default Max number of Peers
+let ITPVersion = '3314'; 
 
 // Console style colors
 let RESET_STYLE = "\x1b[0m";
@@ -31,22 +31,28 @@ Object.keys(ifaces).forEach(function (ifname) {
 //let path = __dirname.split("\\");
 let path = __dirname.split("/");
 let peerLocation = path[path.length - 1];
+
+// Address Objects
 let localPeer = {'port': PEER_PORT, 'IP': HOST};
 let imageAddress = {'port': IMAGE_PORT, 'IP': HOST};
 let knownPeer = {};
 
-// run as a peer server
+// run as a PEER server
 let serverPeer = net.createServer();
 serverPeer.listen(PEER_PORT, HOST);
 console.log('This peer address is ' + BRIGHT + FG_GREEN + HOST + ':' + PEER_PORT + RESET_STYLE + ' located at ' + peerLocation);
 
-// initialize peer table
+// initialize peer and known peers tables
 let peerTable = {};
 let unpeerTable = {};
 unpeerTable[HOST + ':' + PEER_PORT] = {'port': PEER_PORT, 'IP': HOST, 'status': 'me'};
+
+// last n search and received images from peers
 let historySearch = [];
+let receivedImagePackets = [];
+
 serverPeer.on('connection', function (sock) {
-    // received connection request
+    // received PEER connection request
     handler.handlePeerJoining(sock, maxpeers, peerLocation, peerTable, unpeerTable, historySearch);
 });
 
@@ -78,34 +84,32 @@ if (process.argv.length > 2) {
         }
     }
     
+    // Connecting with known PEER get from arguments
     if (knownPeer.IP) 
         handler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable, unpeerTable);
 }
 
 // Automatic Join
 setInterval(function() {
-    if (Object.keys(peerTable).length < maxpeers) {
-        knownPeer = {};
+    if (Object.keys(peerTable).length < maxpeers) { // PeerTable is NOT full
+        knownPeer = {};       
+        // Selecting Peer from available peer. if peer don't have "status" is available
         Object.values(unpeerTable).forEach(peer => {
             if (!('status' in peer) && !knownPeer.IP)
                 knownPeer = peer;
         });
-        
+        // Trying to connect with known peer
         if (knownPeer.IP) 
             handler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable, unpeerTable);
     }
-}, 5000);
-
-let counter = IMAGE_PORT;
-setInterval(function() {
-    handler.handleSearch(peerTable, historySearch, maxpeers, peerLocation, {'origin': imageAddress}, counter, peerLocation + '-' + counter + '.jpg');
-    counter++;
-}, 5000);
+}, 1000);
 
 // Run Image server
 let peer2peerDB = net.createServer();
 peer2peerDB.listen(IMAGE_PORT, HOST);
 console.log('Peer2PeerDB server is started at timestamp: '+singleton.getTimestamp()+' and is listening on ' + BRIGHT + FG_CYAN + HOST + ':' + IMAGE_PORT + RESET_STYLE);
+
 peer2peerDB.on('connection', function(sock) {
-    handler.handleImageJoining(sock, peerTable, historySearch, maxpeers, peerLocation);
+    // Received Image connection request
+    handler.handleImageJoining(sock, peerTable, historySearch, maxpeers, peerLocation, receivedImagePackets);
 });
