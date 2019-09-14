@@ -7,8 +7,16 @@ singleton.init();
 let os = require('os');
 let ifaces = os.networkInterfaces();
 let HOST = '';
-let PORT = singleton.getPort(); //get random port number
-let maxpeers = 2;
+let PEER_PORT = singleton.getPort(); //get random PEER port 
+let IMAGE_PORT = singleton.getPort(); //get random IMAGE port
+let maxpeers = 6; // Default Max number of Peers
+let ITPVersion = '3314'; 
+
+// Console style colors
+let RESET_STYLE = "\x1b[0m";
+let BRIGHT = "\x1b[1m";
+let FG_GREEN = "\x1b[32m";
+let FG_CYAN = "\x1b[36m";
 
 // get the loaclhost ip address
 Object.keys(ifaces).forEach(function (ifname) {
@@ -24,41 +32,84 @@ Object.keys(ifaces).forEach(function (ifname) {
 let path = __dirname.split("/");
 let peerLocation = path[path.length - 1];
 
+// Address Objects
+let localPeer = {'port': PEER_PORT, 'IP': HOST};
+let imageAddress = {'port': IMAGE_PORT, 'IP': HOST};
+let knownPeer = {};
+
+// run as a PEER server
+let serverPeer = net.createServer();
+serverPeer.listen(PEER_PORT, HOST);
+console.log('This peer address is ' + BRIGHT + FG_GREEN + HOST + ':' + PEER_PORT + RESET_STYLE + ' located at ' + peerLocation);
+
+// initialize peer and known peers tables
+let peerTable = {};
+let unpeerTable = {};
+unpeerTable[HOST + ':' + PEER_PORT] = {'port': PEER_PORT, 'IP': HOST, 'status': 'me'};
+
+// last n search and received images from peers
+let historySearch = [];
+let receivedImagePackets = [];
+
+serverPeer.on('connection', function (sock) {
+    // received PEER connection request
+    handler.handlePeerJoining(sock, maxpeers, peerLocation, peerTable, unpeerTable, historySearch);
+});
+
+
 if (process.argv.length > 2) {
     // call as node peer [-p <serverIP>:<port> -n <maxpeers> -v <version>]
 
     // run as a client
     // this needs more work to properly filter command line arguments
-    let firstFlag = process.argv[2]; // should be -p
-    let hostserverIPandPort = process.argv[3].split(':');
-    let secondFlag = process.argv[4]; // should be -n
-    maxpeers = process.argv[5] || 2;
-    let thirdFlag = process.argv[6]; // should be -v
-    let ITPVersion = process.argv[7] || '3314';
-    let knownHOST = hostserverIPandPort[0];
-    let knownPORT = hostserverIPandPort[1];
-
-    // connect to the known peer address
-    let clientPeer = new net.Socket();
-    clientPeer.connect(knownPORT, knownHOST, function () {
-        // initialize peer table
-        let peerTable = {};
-        handler.handleCommunications(clientPeer, maxpeers, peerLocation, peerTable);
-    });
-} else {
-    // call as node peer
-
-    // run as a server
-    let serverPeer = net.createServer();
-    serverPeer.listen(PORT, HOST);
-    console.log('This peer address is ' + HOST + ':' + PORT + ' located at ' + peerLocation);
-
-    // initialize peer table
-    let peerTable = {};
-    serverPeer.on('connection', function (sock) {
-        // received connection request
-        handler.handleClientJoining(sock, maxpeers, peerLocation, peerTable);
-    });
+    for (var flag = 2; flag < process.argv.length; flag++) {
+        if (process.argv[flag] === '-p') {
+            var pattern = /^\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}:\d+$/;
+            if (process.argv[flag + 1] && process.argv[flag + 1].match( pattern ))                
+                knownPeer = {'port': parseInt(process.argv[flag + 1].split(':')[1]), 'IP': process.argv[flag + 1].split(':')[0]};
+            else
+                console.log('Bad address!... it should be <serverIP>:<port>');
+        }
+        if (process.argv[flag] === '-n'){
+            if(process.argv[flag + 1] && parseInt(process.argv[flag + 1]) > 0)
+                maxpeers = parseInt(process.argv[flag + 1]);
+            else
+                console.log('maxPeers should be a non-zero positive number, using default 6.');
+        }
+        if (process.argv[flag] === '-v'){
+            if(process.argv[flag + 1])                
+                ITPVersion = process.argv[flag + 1];
+            else
+                console.log('Incorrect ITP version, using default 3314.');
+        }
+    }
+    
+    // Connecting with known PEER get from arguments
+    if (knownPeer.IP) 
+        handler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable, unpeerTable);
 }
 
+// Automatic Join
+setInterval(function() {
+    if (Object.keys(peerTable).length < maxpeers) { // PeerTable is NOT full
+        knownPeer = {};       
+        // Selecting Peer from available peer. if peer don't have "status" is available
+        Object.values(unpeerTable).forEach(peer => {
+            if (!('status' in peer) && !knownPeer.IP)
+                knownPeer = peer;
+        });
+        // Trying to connect with known peer
+        if (knownPeer.IP) 
+            handler.handleConnect(knownPeer, localPeer, maxpeers, peerLocation, peerTable, unpeerTable);
+    }
+}, 1000);
 
+// Run Image server
+let peer2peerDB = net.createServer();
+peer2peerDB.listen(IMAGE_PORT, HOST);
+console.log('Peer2PeerDB server is started at timestamp: '+singleton.getTimestamp()+' and is listening on ' + BRIGHT + FG_CYAN + HOST + ':' + IMAGE_PORT + RESET_STYLE);
+
+peer2peerDB.on('connection', function(sock) {
+    // Received Image connection request
+    handler.handleImageJoining(sock, peerTable, historySearch, maxpeers, peerLocation, receivedImagePackets);
+});

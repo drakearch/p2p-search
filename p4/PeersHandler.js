@@ -13,7 +13,7 @@ let peerTable = {},
     clientIP = {},
     startTimestamp = {};
 
-let TIME_BUSY = 60000; // Time waiting until send not found response (ms).
+let TIME_BUSY = 100; // Time waiting until send not found response (ms).
 let busy = false;
 
 // Console style colors
